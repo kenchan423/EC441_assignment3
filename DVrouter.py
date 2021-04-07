@@ -33,11 +33,6 @@ class DVrouter(Router):
         # format dstAddr:port
         self.fwd_table = {}
 
-        # for topology & calculating cost
-        self.G = nx.Graph()
-        # add self to network graph
-        self.G.add_node(self.addr)
-
         pass
 
     def handlePacket(self, port, packet):
@@ -98,7 +93,7 @@ class DVrouter(Router):
                 self.fwd_table[address] = 0
             
             # re-calculate DV 
-            pred, dist = nx.bellman_ford(self.G, self.addr, weight='weight')
+            pred, dist = nx.bellman_ford(self.G, self.addr,'weight')
             
             # not completely sure what to do with pred and dist!!
             # update own DV
@@ -106,7 +101,11 @@ class DVrouter(Router):
             # update fowarding table
             for dst in self.fwd_table:
                 try:
-                    self.fwd_table[dst] = self.neighbors[pred[dst]]
+                    distance = self.dis_vec[dst]
+                    next_step = pred[dst]
+                    for x in range(distance-1):
+                        next_step = pred[next_step]
+                    self.fwd_table[dst] = next_step
                     # pred[dst] --> precedessor for that dst
                     # self.neighbors[...] --> port (of neighbor) to get to that final dst
                     # am i using neighbors properly, is this okay???
@@ -128,22 +127,12 @@ class DVrouter(Router):
         self.dis_vec[endpoint] = cost
         self.neighbors[endpoint] = port
         self.fwd_table[endpoint] = port
-
-        self.G.add_node(endpoint)
-        self.G.add_edge(self.addr, endpoint, weight='weight')
         
-        # update forwarding table
-        for dst in self.fwd_table:
-            try:
-                self.fwd_table[dst] = self.neighbors[pred[dst]]
-            except:
-                self.fwd_table[dst] = 0 
         # fowarding to neighbors
         for dst in self.neighbors:
             pkt = Packet(kind=Packet.ROUTING, srcAddr=self.addr, dstAddr=dst)
             pkt.content= dumps([self.dis_vec])
             self.send(self.neighbors[dst], pkt)
-            pass
 
 
     def handleRemoveLink(self, port):
@@ -153,28 +142,28 @@ class DVrouter(Router):
         # broadcast the distance vector of this router to neighbors
 
         # update distance vector
+        # which neighbor matches to that port
         for friend in self.neighbors:
             if self.neighbors[friend] == port:
                 to_remove = friend
                 break
-        
-        self.G.remove_edge(self.addr, to_remove)
-        self.dis_vec.pop(to_remove)
+        # remove that entry from neighbors & DV
         self.neighbors.pop(to_remove)
+        self.dis_vec.pop(to_remove)
         
         # update forwarding table
         for dst in self.fwd_table:
-            try:
-                self.fwd_table[dst] = self.neighbors[pred[dst]]
-            except:
-                self.fwd_table[dst] = 0
+            if self.fwd_table[dst] == port:
+                self.fwd_table.pop(dst)
+                # re-calculate the bellman ford without that port available
+                self.bellmanFord(self, dst)
+                break
 
         # forward to all neighbors
         for dst in self.neighbors:
             pkt = Packet(kind=Packet.ROUTING, srcAddr=self.addr, dstAddr=dst)
             pkt.content= dumps([self.dis_vec])
             self.send(self.neighbors[dst], pkt)
-            pass
 
 
     def handleTime(self, timeMillisecs):
@@ -192,3 +181,29 @@ class DVrouter(Router):
     def debugString(self):
         """TODO: generate a string for debugging in network visualizer"""
         return ""
+
+    def bellmanFord(self, dst):
+        # No clue if this works :'(
+
+        # objective: find the lowest cost from current (self) --> destination
+        # first, go through each neighbor & their DV's --> add cost of self to neighbor + cost of neighbor to destination
+
+        lowest_cost = 0
+        # go through each neighbor
+        for friend in self.neighbors:
+            # cost of self --> neighbor
+            friend_cost = self.dis_vec[friend] 
+            # cost of neighbor --> dst
+            friend_dv = self.all_dis_vec[friend]
+            fri_to_dst = friend_dv[dst]
+            # total cost = self-->neighbor + neighbor-->dst
+            current_cost = friend_cost + fri_to_dst 
+            # re-writing lowest cost if the cost of going through current neighbor is less 
+            if current_cost < lowest_cost:
+                lowest_cost = current_cost
+                cheapest_friend = friend
+        # returning lowest cost into dis_vec
+        self.dis_vec[dst] = lowest_cost
+        # adding port for that dst --> based on cheapest_friend (lowest_cost)
+        self.fwd_table[dst] = self.neighbors[cheapest_friend]
+
