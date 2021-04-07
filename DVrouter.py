@@ -33,6 +33,8 @@ class DVrouter(Router):
         # format dstAddr:port
         self.fwd_table = {}
 
+        # for debugging
+        self.most_recent = ''
         pass
 
     def handlePacket(self, port, packet):
@@ -59,62 +61,34 @@ class DVrouter(Router):
 
             # de-json packet content
             recv_dis_vec = loads(packet.content)
-            
-            update = False
+            self.most_recent = recv_dis_vec
+
+            # update local copy of distance vector
             # if there's an DV for that address ...
             if packet.srcAddr in self.all_dis_vec:
                 # if the DV recieved and the current entry are different
                 if not recv_dis_vec == self.all_dis_vec[packet.srcAddr]:
-                    update = True
                     self.all_dis_vec[packet.srcAddr] = recv_dis_vec
             else:
                 # otherwise, there is yet a DV for that address --> must add DV
-                update = True
                 self.all_dis_vec[packet.srcAddr] = recv_dis_vec
-            # if new DV added to local collection of DV's
-            if update:
-                # if map G has these node
-                if self.G.has_node(packet.srcAddr):
-                    # remove that node, then add back to start from scratch
-                    self.G.remove_node(packet.srcAddr)
-                    self.G.add_node(packet.srcAddr)
-            
-            for address in recv_dis_vec:
-                # loop through recieved distance vector that correspond to that source address
-                # And remove each edge for that source addr
-                if self.G.has_edge(packet.srcAddr, address):
-                    self.G.remove_edge(packet.srcAddr, address)
-                    self.G.add_edge(packet.srcAddr, weight=recv_dis_vec[address])
             
             # add src's neighbors to forward table --> discovering new nodes
             # dont add myself (b/c first condition doesnt tick since not in my own fowarding table)
             # initalize address: port --> 0
-            if not address in self.fwd_table and address !=self.addr:
-                self.fwd_table[address] = 0
+            for address in recv_dis_vec:
+                if not self.fwd_table.has_key(address) and address != self.addr:
+                    self.fwd_table[address] = 0
+                if not packet.srcAddr in self.fwd_table:
+                    self.fwd_table[packet.srcAddr] = 0
             
             # re-calculate DV 
-            pred, dist = nx.bellman_ford(self.G, self.addr,'weight')
+            self.bellmanFord(self, packet.dstAddr)
             
-            # not completely sure what to do with pred and dist!!
-            # update own DV
-            self.dis_vec = dist
-            # update fowarding table
-            for dst in self.fwd_table:
-                try:
-                    distance = self.dis_vec[dst]
-                    next_step = pred[dst]
-                    for x in range(distance-1):
-                        next_step = pred[next_step]
-                    self.fwd_table[dst] = next_step
-                    # pred[dst] --> precedessor for that dst
-                    # self.neighbors[...] --> port (of neighbor) to get to that final dst
-                    # am i using neighbors properly, is this okay???
-                except:
-                    self.fwd_table[dst] = 0 
-            # forward updated DV to neighbors
+            # broadcast DV
             for dst in self.neighbors:
-                self.send(self.neighbors[dst], packet)
-                pass
+                if self.neighbors[dst] != port: 
+                    self.send(self.neighbors[dst], packet)
 
 
     def handleNewLink(self, port, endpoint, cost):
@@ -150,6 +124,7 @@ class DVrouter(Router):
         # remove that entry from neighbors & DV
         self.neighbors.pop(to_remove)
         self.dis_vec.pop(to_remove)
+        self.all_dis_vec.pop(to_remove)
         
         # update forwarding table
         for dst in self.fwd_table:
@@ -180,7 +155,13 @@ class DVrouter(Router):
 
     def debugString(self):
         """TODO: generate a string for debugging in network visualizer"""
-        return ""
+        return 'Own DV: ' + str(self.dis_vec) +\
+            '\nNeighbors: ' + str(self.neighbors) +\
+            '\nNum. of Neighbors: ' + str(len(self.neighbors)) +\
+            '\nNum. of Routers: ' + str(len(self.all_dis_vec)) +\
+            '\nForward Table: ' + str(self.fwd_table) +\
+            '\nMost recent packet recvd: ' +str(self.most_recent)
+        pass
 
     def bellmanFord(self, dst):
         # No clue if this works :'(
