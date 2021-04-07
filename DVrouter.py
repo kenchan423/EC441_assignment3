@@ -65,25 +65,33 @@ class DVrouter(Router):
 
             # update local copy of distance vector
             # if there's an DV for that address ...
+            update = False
             if packet.srcAddr in self.all_dis_vec:
                 # if the DV recieved and the current entry are different
                 if not recv_dis_vec == self.all_dis_vec[packet.srcAddr]:
                     self.all_dis_vec[packet.srcAddr] = recv_dis_vec
+                    update = True
             else:
                 # otherwise, there is yet a DV for that address --> must add DV
                 self.all_dis_vec[packet.srcAddr] = recv_dis_vec
+                update = True
             
             # add src's neighbors to forward table --> discovering new nodes
             # dont add myself (b/c first condition doesnt tick since not in my own fowarding table)
             # initalize address: port --> 0
-            for address in recv_dis_vec:
-                if not self.fwd_table.has_key(address) and address != self.addr:
-                    self.fwd_table[address] = 0
-                if not packet.srcAddr in self.fwd_table:
-                    self.fwd_table[packet.srcAddr] = 0
+            if update == True:
+                for address in recv_dis_vec:
+                    address = str(address)
+                    if not self.fwd_table.has_key(address):
+                        if address != self.addr:
+                            self.fwd_table[address] = 0
+                    if not packet.srcAddr in self.fwd_table:
+                        self.fwd_table[packet.srcAddr] = 0
             
-            # re-calculate DV 
-            self.bellmanFord(self, packet.dstAddr)
+            # re-calculate DV
+            # # no need to pass self b/c ...
+            # 'Python automatically adds in first self argument for bound methods' 
+            self.bellmanFord(packet.dstAddr)
             
             # broadcast DV
             for dst in self.neighbors:
@@ -156,6 +164,7 @@ class DVrouter(Router):
     def debugString(self):
         """TODO: generate a string for debugging in network visualizer"""
         return 'Own DV: ' + str(self.dis_vec) +\
+            '\nAll DV: ' + str(self.all_dis_vec) +\
             '\nNeighbors: ' + str(self.neighbors) +\
             '\nNum. of Neighbors: ' + str(len(self.neighbors)) +\
             '\nNum. of Routers: ' + str(len(self.all_dis_vec)) +\
