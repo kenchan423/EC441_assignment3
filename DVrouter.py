@@ -61,6 +61,8 @@ class DVrouter(Router):
 
             # de-json packet content
             recv_dis_vec = loads(packet.content)
+            # recv_dis_vec came as a vec --> so must index 0 to get it as dict
+            recv_dis_vec = recv_dis_vec[0]
             self.most_recent = recv_dis_vec
 
             # update local copy of distance vector
@@ -177,13 +179,16 @@ class DVrouter(Router):
 
         # objective: find the lowest cost from current (self) --> destination
         # first, go through each neighbor & their DV's --> add cost of self to neighbor + cost of neighbor to destination
-
+    
         lowest_cost = 0
+        cheapest_friend = 0
         # go through each neighbor
         for friend in self.neighbors:
             # cost of self --> neighbor
             friend_cost = self.dis_vec[friend] 
             # cost of neighbor --> dst
+            if friend not in self.all_dis_vec:
+                continue
             friend_dv = self.all_dis_vec[friend]
             fri_to_dst = friend_dv[dst]
             # total cost = self-->neighbor + neighbor-->dst
