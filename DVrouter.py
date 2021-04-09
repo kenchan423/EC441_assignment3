@@ -114,7 +114,7 @@ class DVrouter(Router):
 					neighbor_port = self.neighbors[dst]
 					for poisoned_dst, route in self.fwd_table.items():
 						# for that neighbor --> if self routes through that neighbor for x dst
-						if neighbor_port == route:
+						if neighbor_port == route and route != dst:
 							# change DV for all those x dst to infinity
 							# thus, neighbor never routes through self for x dst
 							dv_content[poisoned_dst]=16
